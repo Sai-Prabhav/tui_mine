@@ -257,6 +257,13 @@ std::pair<Point, bool> getClick(WINDOW *win, Grid grid,
         wrefresh(win);
     }
 }
+void showBombs(Grid &grid, int width, int height) {
+    for (int i = 0; i < width; i++) {
+        for (int j = 0; j < height; j++) {
+            grid[i][j].clicked = true;
+        }
+    }
+}
 
 int main() {
 
@@ -272,7 +279,12 @@ int main() {
     keypad(stdscr, TRUE); // Enable arrow keys
     int height, width;
     getmaxyx(stdscr, height, width);
+    height--;
+    height--;
+    width--;
+    width--;
     start_color();
+
     // if (height < SIZE || width < SIZE) {
     //     printw("Make sure the screen's length and "
     //            "width are each at least %d",
@@ -280,9 +292,10 @@ int main() {
     //     getch();
     //     return 10;
     // }
+
     refresh();
     int x{width / 2}, y{height / 2};
-    WINDOW *win = newwin(height, width, 0, 0);
+    WINDOW *win = newwin(height, width, 1, 1);
 
     auto grid =
         makeGrid(width, height, 0.0f, gen, Point{1, 1});
@@ -305,8 +318,10 @@ int main() {
         } else {
             if (onClick(grid, p, width, height) == 1) {
                 isWin = false;
-                wmove(win, 0, 1);
-                wprintw(win, "You Lost");
+                move(0, (width / 2) - 4);
+                printw("You Lost");
+                showBombs(grid, width, height);
+                drawGrid(win, grid, width, height);
                 wrefresh(win);
                 getch();
                 break;
