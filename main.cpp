@@ -2,6 +2,8 @@
 #include <chrono>
 #include <csignal>
 #include <cstdio>
+#include <cstring>
+#include <functional>
 #include <iostream>
 #include <ncurses.h>
 #include <random>
@@ -129,6 +131,17 @@ void expandGrid(Grid &grid, int x, int y, int width,
         expandGrid(grid, x + 1, y - 1, width, height);
     }
 }
+bool isCompleted(Grid &grid, int width, int height) {
+    for (int i = 0; i < width; i++) {
+        for (int j; j < height; j++) {
+            if ((!grid[i][j].bomb) &&
+                (!grid[i][j].clicked)) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
 
 int onClick(Grid &grid, Point point, int width,
             int height) {
@@ -140,6 +153,10 @@ int onClick(Grid &grid, Point point, int width,
                !grid[point.x][point.y].flagged) {
         expandGrid(grid, point.x, point.y, width,
                    height);
+        if (isCompleted(grid, width, height)) {
+            return 2; // completed game
+        }
+
         return 0; // No problem
     }
     return 0;
@@ -167,6 +184,13 @@ void printchw(WINDOW *win, char ch, int x, int y,
     wattroff(win, COLOR_PAIR(pair));
 }
 
+void printHeader(const char *str, int width) {
+    mvprintw(0, 0,
+             "                                         "
+             "                 ");
+    mvprintw(0, (width - std::strlen(str)) / 2, "%s",
+             str);
+}
 int add_color(Color color) {
 
     static int color_index =
@@ -264,7 +288,16 @@ void showBombs(Grid &grid, int width, int height) {
         }
     }
 }
-
+int totalFlags(Grid &grid, int width, int height) {
+    int flag = 0;
+    for (int i = 0; i < width; i++) {
+        for (int j = 0; j < height; j++) {
+            flag += grid[i][j].flagged;
+        }
+    }
+    return flag;
+}
+const float BOMB_RATIO = 0.1f;
 int main() {
 
     // intilalise random
@@ -303,12 +336,12 @@ int main() {
     wrefresh(win);
     auto [p, isFlag] =
         getClick(win, grid, width, height);
-    grid = makeGrid(width, height, 0.1f, gen, p);
+    grid = makeGrid(width, height, BOMB_RATIO, gen, p);
     expandGrid(grid, p.x, p.y, width, height);
     drawGrid(win, grid, width, height);
     wrefresh(win);
+    const int totalBomb = width * height * BOMB_RATIO;
 
-    bool isWin = true;
     while (true) {
         auto [p, isFlag] =
             getClick(win, grid, width, height);
@@ -316,10 +349,17 @@ int main() {
         if (isFlag) {
             onSClick(grid, p);
         } else {
-            if (onClick(grid, p, width, height) == 1) {
-                isWin = false;
-                move(0, (width / 2) - 4);
-                printw("You Lost");
+            int status =
+                onClick(grid, p, width, height);
+            if (status == 1) {
+                printHeader("You Lost", width);
+                showBombs(grid, width, height);
+                drawGrid(win, grid, width, height);
+                wrefresh(win);
+                getch();
+                break;
+            } else if (status == 2) {
+                printHeader("You Win", width);
                 showBombs(grid, width, height);
                 drawGrid(win, grid, width, height);
                 wrefresh(win);
@@ -327,33 +367,18 @@ int main() {
                 break;
             }
         }
-
+        char hstr[16];
+        std::snprintf(hstr, 16, "flags: %d/%d",
+                      totalFlags(grid, width, height),
+                      totalBomb);
+        printHeader(hstr, width);
         drawGrid(win, grid, width, height);
         wmove(win, p.y, p.x);
         wrefresh(win);
+        refresh();
     }
 
     delwin(win);
-    endwin();
-    return 0;
-}
-
-int ain() {
-    initscr();
-    start_color();
-    init_pair(1, COLOR_RED, COLOR_BLACK);
-    refresh();
-    WINDOW *win = newwin(10, 5, 1, 1);
-
-    wattron(win,
-            COLOR_PAIR(1)); // turn on red text for win
-    mvwaddch(win, 2, 2, '#');
-    wattroff(win, COLOR_PAIR(1)); // turn off red
-
-    box(win, 0, 0);
-    wrefresh(win);
-
-    getch();
     endwin();
     return 0;
 }
