@@ -1,17 +1,12 @@
-#include <algorithm> // for std::find
+#include "minesweeper.h"
 #include <chrono>
 #include <csignal>
 #include <cstdio>
 #include <cstring>
-#include <functional>
-#include <iostream>
 #include <ncurses.h>
+
 #include <random>
-#include <stdexcept>
-#include <string>
 #include <thread>
-#include <utility>
-#include <vector>
 
 struct Color {
     int red;
@@ -19,154 +14,9 @@ struct Color {
     int blue;
 };
 
-struct Cell {
-    uint8_t value : 4;
-    bool clicked : 1;
-    bool flagged : 1;
-    bool bomb : 1;
-};
-
-struct Point {
-    int x;
-    int y;
-
-    bool operator==(const Point &other) const {
-        return x == other.x && y == other.y;
-    }
-};
-
-typedef std::vector<std::vector<Cell>> Grid;
-
-template <typename T>
-bool in_vector(const std::vector<T> &vec,
-               const T &val) {
-    return std::find(vec.begin(), vec.end(), val) !=
-           vec.end();
-}
-
-std::vector<Point> sample(int width, int height,
-                          int num, Point point,
-                          std::mt19937 gen) {
-
-    int t = 0;
-    int x, y;
-    std::vector<Point> bombs(num);
-    while (t < num) {
-        x = gen() % width;
-        y = gen() % height;
-        if (!(abs(x - point.x) <= 1 ||
-              abs(y - point.y) <= 1 ||
-              in_vector(bombs, Point{x, y}))) {
-
-            bombs[t++] = Point{x, y};
-        }
-    }
-    return bombs;
-}
-
 void sleep(int time) {
     std::this_thread::sleep_for(
         std::chrono::milliseconds(time));
-}
-
-void addBomb(Grid &grid, int x, int y) {
-    int width = grid.size();
-    int height = grid[0].size();
-
-    grid[x][y].bomb = true;
-    if (x > 0) {
-        if (y > 0)
-            grid[x - 1][y - 1].value++;
-        grid[x - 1][y].value++;
-        if (y < (height - 1))
-            grid[x - 1][y + 1].value++;
-    }
-    if (x < (width - 1)) {
-        if (y > 0)
-            grid[x + 1][y - 1].value++;
-        grid[x + 1][y].value++;
-        if (y < (height - 1))
-            grid[x + 1][y + 1].value++;
-    }
-    if (y > 0)
-        grid[x][y - 1].value++;
-
-    if (y < (height - 1))
-        grid[x][y + 1].value++;
-}
-
-Grid makeGrid(int width, int height, float bomb,
-              std::mt19937 gen, Point point) {
-    auto bombs =
-        sample(width, height,
-               static_cast<int>(width * height * bomb),
-               point, gen);
-
-    Grid grid(width, std::vector<Cell>(
-                         height,
-                         Cell{0, false, false, false}));
-    for (auto b : bombs) {
-        addBomb(grid, b.x, b.y);
-    }
-    return grid;
-}
-
-void expandGrid(Grid &grid, int x, int y, int width,
-                int height) {
-
-    if (x < 0 || y < 0 || y >= height || x >= width)
-        return;
-    if (grid[x][y].bomb || grid[x][y].clicked) {
-        return;
-    }
-    grid[x][y].clicked = true;
-    if (grid[x][y].value == 0) {
-        expandGrid(grid, x + 1, y, width, height);
-        expandGrid(grid, x - 1, y, width, height);
-        expandGrid(grid, x, y + 1, width, height);
-        expandGrid(grid, x, y - 1, width, height);
-        expandGrid(grid, x + 1, y + 1, width, height);
-        expandGrid(grid, x - 1, y - 1, width, height);
-        expandGrid(grid, x - 1, y + 1, width, height);
-        expandGrid(grid, x + 1, y - 1, width, height);
-    }
-}
-bool isCompleted(Grid &grid, int width, int height) {
-    for (int i = 0; i < width; i++) {
-        for (int j; j < height; j++) {
-            if ((!grid[i][j].bomb) &&
-                (!grid[i][j].clicked)) {
-                return false;
-            }
-        }
-    }
-    return true;
-}
-
-int onClick(Grid &grid, Point point, int width,
-            int height) {
-
-    if (grid[point.x][point.y].bomb &&
-        !grid[point.x][point.y].flagged) {
-        return 1; // game lost
-    } else if (!grid[point.x][point.y].clicked ||
-               !grid[point.x][point.y].flagged) {
-        expandGrid(grid, point.x, point.y, width,
-                   height);
-        if (isCompleted(grid, width, height)) {
-            return 2; // completed game
-        }
-
-        return 0; // No problem
-    }
-    return 0;
-}
-
-void onSClick(Grid &grid, Point point) {
-    if (!grid[point.x][point.y].clicked) {
-        grid[point.x][point.y].flagged =
-            !grid[point.x][point.y].flagged;
-    }
 }
 
 void printch(char ch, int x, int y, int pair) {
@@ -185,12 +35,15 @@ void printchw(WINDOW *win, char ch, int x, int y,
 }
 
 void printHeader(const char *str, int width) {
-    mvprintw(0, 0,
-             "                                         "
-             "                 ");
+    char *space = new char[width + 1];
+    std::memset(space, ' ', width);
+    space[width] = '\0';
+
+    mvprintw(0, 0, "%s", space);
     mvprintw(0, (width - std::strlen(str)) / 2, "%s",
              str);
 }
+
 int add_color(Color color) {
 
     static int color_index =
@@ -206,7 +59,7 @@ int add_pair(int fg, int bg) {
     return pair_index;
 }
 
-void drawCell(WINDOW *win, Cell cell, int x, int y) {
+void drawCell(WINDOW *win, Cell &cell, int x, int y) {
     static const int red = COLOR_RED;
     static const int green = COLOR_GREEN;
     static const int black = COLOR_BLACK;
@@ -256,8 +109,20 @@ std::pair<Point, bool> getClick(WINDOW *win, Grid grid,
 
         drawGrid(win, grid, width, height);
         ch = getch(); // Get user input
+        if (ch == KEY_MOUSE) {
+            MEVENT event;
+            if (getmouse(&event) == OK) {
 
-        if (ch == 'q') {
+                point.x = event.x - 1;
+                point.y = event.y - 1;
+                wmove(win, point.y, point.x);
+                wrefresh(win);
+                if (event.bstate & BUTTON1_CLICKED)
+                    return {point, false};
+                else if (event.bstate & BUTTON3_CLICKED)
+                    return {point, true};
+            }
+        } else if (ch == 'q') {
             exit(0);
         } else if ((ch == 'w' || ch == KEY_UP) &&
                    point.y > 0)
@@ -281,23 +146,9 @@ std::pair<Point, bool> getClick(WINDOW *win, Grid grid,
         wrefresh(win);
     }
 }
-void showBombs(Grid &grid, int width, int height) {
-    for (int i = 0; i < width; i++) {
-        for (int j = 0; j < height; j++) {
-            grid[i][j].clicked = true;
-        }
-    }
-}
-int totalFlags(Grid &grid, int width, int height) {
-    int flag = 0;
-    for (int i = 0; i < width; i++) {
-        for (int j = 0; j < height; j++) {
-            flag += grid[i][j].flagged;
-        }
-    }
-    return flag;
-}
+
 const float BOMB_RATIO = 0.1f;
+
 int main() {
 
     // intilalise random
@@ -310,12 +161,13 @@ int main() {
     cbreak();             // Disable line buffering
     noecho();             // Don't echo input
     keypad(stdscr, TRUE); // Enable arrow keys
+    mousemask(ALL_MOUSE_EVENTS, NULL);
+
     int height, width;
     getmaxyx(stdscr, height, width);
-    height--;
-    height--;
-    width--;
-    width--;
+    height -= 2;
+    width -= 2;
+
     start_color();
 
     // if (height < SIZE || width < SIZE) {
@@ -327,7 +179,6 @@ int main() {
     // }
 
     refresh();
-    int x{width / 2}, y{height / 2};
     WINDOW *win = newwin(height, width, 1, 1);
 
     auto grid =
@@ -347,18 +198,18 @@ int main() {
             getClick(win, grid, width, height);
 
         if (isFlag) {
-            onSClick(grid, p);
+            onFlag(grid, p);
         } else {
-            int status =
+            GameStatus status =
                 onClick(grid, p, width, height);
-            if (status == 1) {
+            if (status == GAME_LOST) {
                 printHeader("You Lost", width);
                 showBombs(grid, width, height);
                 drawGrid(win, grid, width, height);
                 wrefresh(win);
                 getch();
                 break;
-            } else if (status == 2) {
+            } else if (status == GAME_WON) {
                 printHeader("You Win", width);
                 showBombs(grid, width, height);
                 drawGrid(win, grid, width, height);
